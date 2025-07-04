@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const upcomingFlights = flightList.filter(flight => {
                 const [hours, minutes] = flight.time.split(':');
                 const flightTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
-                return flightTime.getTime() >= (now.getTime() - 10 * 60 * 1000);
+                return flightTime.getTime() >= (now.getTime() - 1 * 60 * 1000);
             }).slice(0, 5);
 
             tableBody.innerHTML = ''; 
