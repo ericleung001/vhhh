@@ -1,12 +1,9 @@
 // app.js
 
-// 當HTML文檔完全載入並解析後執行
 document.addEventListener('DOMContentLoaded', function() {
 
-    // 輔助函式：根據ICAO代碼獲取航空公司全名
-    // 它會使用在 airlines.js 中定義的全局變數 airlineCodeMap
     function getAirlineName(code) {
-        return airlineCodeMap[code] || code; // 如果在對照表中找不到，就直接返回原始代碼
+        return airlineCodeMap[code] || code;
     }
 
     const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
@@ -14,8 +11,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=false&lang=zh_HK`;
-    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=true&lang=zh_HK`;
+    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=false&lang=en`; // 改為請求英文lang=en
+    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=true&lang=en`; // 改為請求英文lang=en
 
     const departureUrl = `${CORS_PROXY}${encodeURIComponent(originalDepartureUrl)}`;
     const arrivalUrl = `${CORS_PROXY}${encodeURIComponent(originalArrivalUrl)}`;
@@ -24,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const tableBody = document.getElementById(tableBodyId);
         try {
             const response = await fetch(url);
-            if (!response.ok) { throw new Error(`網絡錯誤: ${response.statusText}`); }
+            if (!response.ok) { throw new Error(`Network Error: ${response.statusText}`); }
             
             const dataText = await response.text();
             const data = JSON.parse(dataText);
@@ -32,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const todaysData = data.find(dayObject => dayObject.date === dateString);
 
             if (!todaysData || !todaysData.list) {
-                throw new Error("在API回應中找不到今天的航班列表 ('list')");
+                throw new Error("Today's flight list ('list') not found in API response");
             }
 
             const flightList = todaysData.list;
@@ -47,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tableBody.innerHTML = ''; 
 
             if (upcomingFlights.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">暫時沒有更多即將來臨的航班。</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No upcoming flights at the moment.</td></tr>`;
                 return;
             }
 
@@ -64,7 +61,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     displayFlightNos = flight.flight.map(f => f.no).join(' / ');
                 }
                 
-                const displayStatus = flight.status || 'N/A';
+                // --- 【關鍵修改】如果 flight.status 是空的，就預設為 'On Time' ---
+                const displayStatus = flight.status || 'On Time';
                 const statusCssClass = getStatusCss(displayStatus);
 
                 let displayLocation = '';
@@ -87,25 +85,29 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
         } catch (error) {
-            console.error(`獲取 ${isDeparture ? '出發' : '到達'} 航班資料失敗:`, error);
-            tableBody.innerHTML = `<tr class="error-row"><td colspan="5">無法正確解析航班資料。請稍後再試。</td></tr>`;
+            console.error(`Failed to fetch ${isDeparture ? 'departure' : 'arrival'} flights:`, error);
+            tableBody.innerHTML = `<tr class="error-row"><td colspan="5">Failed to parse flight data. Please try again later.</td></tr>`;
         }
     }
     
+    // --- 【關鍵修改】更新函式以匹配英文狀態 ---
     function getStatusCss(statusText) {
         if (typeof statusText !== 'string') return 'status-default';
-        if (statusText.includes('準時') || statusText.includes('啟航')) return 'status-ontime';
-        if (statusText.includes('延誤')) return 'status-delayed';
-        if (statusText.includes('已到達') || statusText.includes('到閘口')) return 'status-landed';
-        if (statusText.includes('登機') || statusText.includes('截止')) return 'status-boarding';
-        if (statusText.includes('取消')) return 'status-cancelled';
-        return 'status-default';
+        const lowerStatus = statusText.toLowerCase();
+        
+        if (lowerStatus.includes('on time') || lowerStatus.includes('departed')) return 'status-ontime';
+        if (lowerStatus.includes('delayed')) return 'status-delayed';
+        if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) return 'status-landed';
+        if (lowerStatus.includes('boarding') || lowerStatus.includes('gate closing') || lowerStatus.includes('final call')) return 'status-boarding';
+        if (lowerStatus.includes('cancelled')) return 'status-cancelled';
+        return 'status-ontime'; // 將預設的(例如我們手動加入的'On Time')也設為綠色
     }
 
     function updateTimestamp() {
         const now = new Date();
-        const timeString = now.toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit' });
-        document.getElementById('last-updated').innerText = `最後更新: ${timeString}`;
+        // --- 【關鍵修改】更新時間戳為英文格式 ---
+        const timeString = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+        document.getElementById('last-updated').innerText = `Last Updated: ${timeString}`;
     }
 
     fetchFlights(departureUrl, 'departures-body', true);
