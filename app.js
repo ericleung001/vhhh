@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=false&lang=en`; // 改為請求英文lang=en
-    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=true&lang=en`; // 改為請求英文lang=en
+    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=false&lang=en`; // 改為請求英文lang=en
+    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=true&lang=en`; // 改為請求英文lang=en
 
     const departureUrl = `${CORS_PROXY}${encodeURIComponent(originalDepartureUrl)}`;
     const arrivalUrl = `${CORS_PROXY}${encodeURIComponent(originalArrivalUrl)}`;
