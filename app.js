@@ -77,9 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const effectiveFlightTime = getEffectiveFlightTime(flight);
                     
                     if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
+                        return effectiveFlightTime.getTime() >= (now.getTime() - 2 * 60 * 1000);
                     } else {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
+                        return effectiveFlightTime.getTime() >= (now.getTime() - 2 * 60 * 1000);
                     }
                 })
                 .sort((flightA, flightB) => {
