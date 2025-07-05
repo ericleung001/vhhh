@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=false&lang=en`; // 改為請求英文lang=en
-    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=true&arrival=true&lang=en`; // 改為請求英文lang=en
+    const originalDepartureUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=false&lang=en`;
+    const originalArrivalUrl = `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateString}&cargo=false&arrival=true&lang=en`;
 
     const departureUrl = `${CORS_PROXY}${encodeURIComponent(originalDepartureUrl)}`;
     const arrivalUrl = `${CORS_PROXY}${encodeURIComponent(originalArrivalUrl)}`;
@@ -36,15 +36,43 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const now = new Date();
             const upcomingFlights = flightList.filter(flight => {
-                const [hours, minutes] = flight.time.split(':');
-                const flightTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
-                return flightTime.getTime() >= (now.getTime() - 1 * 60 * 1000);
+                const status = flight.status || 'On Time';
+                const lowerStatus = status.toLowerCase();
+
+                // 1. 過濾已取消的航班
+                if (lowerStatus.includes('cancelled')) {
+                    return false;
+                }
+                
+                // --- 【關鍵修正】智能提取「有效時間」---
+                let effectiveTimeString = flight.time; // 預設使用「預定時間」
+                
+                // 使用正規表示式，嘗試從狀態文字中找出 HH:MM 格式的時間
+                const timeInStatusMatch = status.match(/(\d{2}):(\d{2})/);
+                
+                if (timeInStatusMatch) {
+                    // 如果找到了 (例如從 "Landed 09:17" 中找到 "09:17")，就用這個時間覆蓋預設值
+                    effectiveTimeString = timeInStatusMatch[0];
+                }
+                
+                // 2. 使用最準確的「有效時間」來進行過濾
+                const [hours, minutes] = effectiveTimeString.split(':');
+                const effectiveFlightTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
+
+                if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) {
+                    // 「已到達」的航班，在2分鐘後消失
+                    return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
+                } else {
+                    // 其他狀態的航班，在1分鐘後消失
+                    return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
+                }
+
             }).slice(0, 10);
 
             tableBody.innerHTML = ''; 
 
             if (upcomingFlights.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No upcoming flights at the moment.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No upcoming flights to display.</td></tr>`;
                 return;
             }
 
@@ -61,7 +89,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     displayFlightNos = flight.flight.map(f => f.no).join(' / ');
                 }
                 
-                // --- 【關鍵修改】如果 flight.status 是空的，就預設為 'On Time' ---
                 const displayStatus = flight.status || 'On Time';
                 const statusCssClass = getStatusCss(displayStatus);
 
@@ -90,7 +117,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // --- 【關鍵修改】更新函式以匹配英文狀態 ---
     function getStatusCss(statusText) {
         if (typeof statusText !== 'string') return 'status-default';
         const lowerStatus = statusText.toLowerCase();
@@ -100,12 +126,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) return 'status-landed';
         if (lowerStatus.includes('boarding') || lowerStatus.includes('gate closing') || lowerStatus.includes('final call')) return 'status-boarding';
         if (lowerStatus.includes('cancelled')) return 'status-cancelled';
-        return 'status-ontime'; // 將預設的(例如我們手動加入的'On Time')也設為綠色
+        return 'status-ontime';
     }
 
     function updateTimestamp() {
         const now = new Date();
-        // --- 【關鍵修改】更新時間戳為英文格式 ---
         const timeString = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
         document.getElementById('last-updated').innerText = `Last Updated: ${timeString}`;
     }
