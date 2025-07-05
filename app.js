@@ -2,9 +2,11 @@
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    function getEffectiveFlightTime(flight) {
+    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+    // 輔助函式：從單一航班資訊中，智能地提取出最準確的「有效日期時間」物件
+    function getEffectiveFlightTime(flight, status) {
         const today = new Date();
-        const status = flight.status || '';
         
         const dateTimeMatch = status.match(/(\d{2}):(\d{2})\s*\((\d{2})\/(\d{2})\/(\d{4})\)/);
         if (dateTimeMatch) {
@@ -25,109 +27,83 @@ document.addEventListener('DOMContentLoaded', function() {
     function getAirlineName(code) {
         return airlineCodeMap[code] || code;
     }
+    
+    function getStatusCss(statusText) {
+        if (typeof statusText !== 'string') return 'status-default';
+        const lowerStatus = statusText.toLowerCase();
+        if (lowerStatus.includes('on time') || lowerStatus.includes('departed')) return 'status-ontime';
+        if (lowerStatus.includes('delayed') || lowerStatus.includes('est at')) return 'status-delayed';
+        if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) return 'status-landed';
+        if (lowerStatus.includes('boarding') || lowerStatus.includes('gate closing') || lowerStatus.includes('final call')) return 'status-boarding';
+        if (lowerStatus.includes('cancelled')) return 'status-cancelled';
+        return 'status-ontime';
+    }
 
-    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-    const todayForUrl = new Date();
-    const dateStringForUrl = `${todayForUrl.getFullYear()}-${String(todayForUrl.getMonth() + 1).padStart(2, '0')}-${String(todayForUrl.getDate()).padStart(2, '0')}`;
-
-    const passengerDepartureUrl = `${CORS_PROXY}${encodeURIComponent(`https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=false&arrival=false&lang=en`)}`;
-    const passengerArrivalUrl = `${CORS_PROXY}${encodeURIComponent(`https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=false&arrival=true&lang=en`)}`;
-    const cargoDepartureUrl = `${CORS_PROXY}${encodeURIComponent(`https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=true&arrival=false&lang=en`)}`;
-    const cargoArrivalUrl = `${CORS_PROXY}${encodeURIComponent(`https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=true&arrival=true&lang=en`)}`;
-
-
-    async function fetchFlights(url, tableBodyId, isDeparture) {
+    async function fetchAndDisplayFlights(sourceUrl, tableBodyId, isDeparture) {
         const tableBody = document.getElementById(tableBodyId);
         try {
-            const response = await fetch(url);
-            if (!response.ok) { throw new Error(`Network Error: ${response.statusText}`); }
+            const response = await fetch(`${CORS_PROXY}${encodeURIComponent(sourceUrl)}`);
+            if (!response.ok) throw new Error(`Network Error: ${response.statusText}`);
             
             const dataText = await response.text();
             const data = JSON.parse(dataText);
             
-            // --- 【關鍵修正】讓程式能同時處理兩種不同的資料格式 ---
+            const todayForUrl = new Date();
+            const dateStringForUrl = `${todayForUrl.getFullYear()}-${String(todayForUrl.getMonth() + 1).padStart(2, '0')}-${String(todayForUrl.getDate()).padStart(2, '0')}`;
+
             let todaysData;
-            
-            // 檢查API回傳的是否為陣列 (客機API格式)
             if (Array.isArray(data)) {
                 todaysData = data.find(dayObject => dayObject.date === dateStringForUrl);
-            } else {
-                // 如果不是陣列，就假設它是單一物件 (很可能是貨機API格式)
-                todaysData = data;
-            }
-            // --- 修正結束 ---
+            } else { todaysData = data; }
 
             if (!todaysData || !todaysData.list) {
                 tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No flight data available.</td></tr>`;
                 return;
             }
 
-            const flightList = todaysData.list;
             const now = new Date();
 
-            const upcomingFlights = flightList
-                .filter(flight => {
-                    const status = flight.status || '-';
-                    const lowerStatus = status.toLowerCase();
+            const processedFlights = todaysData.list.map(flight => {
+                return { ...flight, effectiveDateTime: getEffectiveFlightTime(flight, flight.status || 'On Time') };
+            });
 
-                    if (lowerStatus.includes('cancelled')) {
-                        return false;
-                    }
-                    
-                    const effectiveFlightTime = getEffectiveFlightTime(flight);
-                    
-                    if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
-                    } else {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 10 * 60 * 1000);
-                    }
-                })
-                .sort((flightA, flightB) => {
-                    const timeA = getEffectiveFlightTime(flightA).getTime();
-                    const timeB = getEffectiveFlightTime(flightB).getTime();
-                    return timeA - timeB;
-                })
-                .slice(0, 5);
+            processedFlights.sort((a, b) => a.effectiveDateTime.getTime() - b.effectiveDateTime.getTime());
+            
+            const timeWindow = 7 * 60 * 1000; // 你可以修改這裡的時間窗口 (單位：毫秒)
+            const lowerBound = now.getTime() - timeWindow;
+            
+            const displayFlights = processedFlights.filter(flight => {
+                if ((flight.status || '').toLowerCase().includes('cancelled')) return false;
+                return flight.effectiveDateTime.getTime() >= lowerBound;
+            }).slice(0, 5);
 
             tableBody.innerHTML = ''; 
-
-            if (upcomingFlights.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No upcoming flights to display.</td></tr>`;
+            if (displayFlights.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No flights to display based on current filters.</td></tr>`;
                 return;
             }
 
-            upcomingFlights.forEach(flight => {
-                const displayTime = flight.time || 'N/A';
+            displayFlights.forEach(flight => {
+                const status = flight.status || 'On Time';
                 
-                let displayAirlines = 'N/A';
-                if (flight.flight && flight.flight.length > 0) {
-                    displayAirlines = flight.flight.map(f => getAirlineName(f.airline)).join(' / ');
+                let displayTime = flight.time;
+                const timeInStatus = status.match(/(\d{2}):(\d{2})/);
+                if (timeInStatus) { displayTime = timeInStatus[0]; }
+
+                let cleanedStatus = status;
+                if (['landed', 'arrived', 'at gate', 'dep '].some(k => cleanedStatus.toLowerCase().startsWith(k))) {
+                    const timeInStatusForCleaning = cleanedStatus.match(/\s\d{2}:\d{2}/);
+                    if (timeInStatusForCleaning) {
+                        cleanedStatus = cleanedStatus.replace(timeInStatusForCleaning[0], '').trim();
+                    }
                 }
 
-                let displayFlightNos = 'N/A';
-                if (flight.flight && flight.flight.length > 0) {
-                    displayFlightNos = flight.flight.map(f => f.no).join(' / ');
-                }
-                
-                const displayStatus = flight.status || '-';
-                const statusCssClass = getStatusCss(displayStatus);
+                const displayAirlines = flight.flight?.map(f => getAirlineName(f.airline)).join(' / ') || 'N/A';
+                const displayFlightNos = flight.flight?.map(f => f.no).join(' / ') || 'N/A';
+                const statusCssClass = getStatusCss(status);
+                let displayLocation = isDeparture ? flight.destination?.join(', ') : flight.origin?.join(', ');
 
-                let displayLocation = '';
-                if (isDeparture && flight.destination && flight.destination.length > 0) {
-                    displayLocation = flight.destination.join(', ');
-                } else if (!isDeparture && flight.origin && flight.origin.length > 0) {
-                    displayLocation = flight.origin.join(', ');
-                }
-
-                const row = `
-                    <tr>
-                        <td class="flight-time">${displayTime}</td>
-                        <td>${displayAirlines}</td>
-                        <td class="flight-no">${displayFlightNos}</td>
-                        <td>${displayLocation}</td>
-                        <td style="text-align: center;"><span class="status ${statusCssClass}">${displayStatus}</span></td>
-                    </tr>
-                `;
+                const row = `<tr><td class="flight-time">${displayTime}</td><td>${displayAirlines}</td><td class="flight-no">${displayFlightNos}</td><td>${displayLocation || ''}</td><td style="text-align: center;"><span class="status ${statusCssClass}">${cleanedStatus}</span></td></tr>`;
                 tableBody.innerHTML += row;
             });
 
@@ -135,18 +111,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error(`Failed to fetch flights for ${tableBodyId}:`, error);
             tableBody.innerHTML = `<tr class="error-row"><td colspan="5">Failed to parse flight data. Please try again later.</td></tr>`;
         }
-    }
-    
-    function getStatusCss(statusText) {
-        if (typeof statusText !== 'string') return 'status-default';
-        const lowerStatus = statusText.toLowerCase();
-        
-        if (lowerStatus.includes('on time') || lowerStatus.includes('departed')) return 'status-ontime';
-        if (lowerStatus.includes('delayed')) return 'status-delayed';
-        if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) return 'status-landed';
-        if (lowerStatus.includes('boarding') || lowerStatus.includes('gate closing') || lowerStatus.includes('final call')) return 'status-boarding';
-        if (lowerStatus.includes('cancelled')) return 'status-cancelled';
-        return 'status-ontime';
     }
 
     function updateTimestamp() {
@@ -156,17 +120,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function fetchAllFlights() {
-        fetchFlights(passengerDepartureUrl, 'departures-body', true);
-        fetchFlights(cargoDepartureUrl, 'cargo-departures-body', true);
-        fetchFlights(passengerArrivalUrl, 'arrivals-body', false);
-        fetchFlights(cargoArrivalUrl, 'cargo-arrivals-body', false);
+        const todayForUrl = new Date();
+        const dateStringForUrl = `${todayForUrl.getFullYear()}-${String(todayForUrl.getMonth() + 1).padStart(2, '0')}-${String(todayForUrl.getDate()).padStart(2, '0')}`;
+        
+        // --- 【關鍵修改】在這裡為每次請求都產生一個獨一無二的時間戳 ---
+        const cacheBuster = `&_=${Date.now()}`;
+        
+        // 將時間戳附加到原始URL的末尾
+        const urls = {
+            passengerDeparture: `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=false&arrival=false&lang=en${cacheBuster}`,
+            passengerArrival: `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=false&arrival=true&lang=en${cacheBuster}`,
+            cargoDeparture: `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=true&arrival=false&lang=en${cacheBuster}`,
+            cargoArrival: `https://www.hongkongairport.com/flightinfo-rest/rest/flights/past?date=${dateStringForUrl}&cargo=true&arrival=true&lang=en${cacheBuster}`
+        };
+
+        fetchAndDisplayFlights(urls.passengerDeparture, 'departures-body', true);
+        fetchAndDisplayFlights(urls.cargoDeparture, 'cargo-departures-body', true);
+        fetchAndDisplayFlights(urls.passengerArrival, 'arrivals-body', false);
+        fetchAndDisplayFlights(urls.cargoArrival, 'cargo-arrivals-body', false);
         updateTimestamp();
     }
 
+    // 立即執行並設定每分鐘刷新
     fetchAllFlights();
-
-    setInterval(() => {
-        console.log("Auto-refreshing all flight data...");
-        fetchAllFlights();
-    }, 30000);
+    setInterval(fetchAllFlights, 60000);
 });
