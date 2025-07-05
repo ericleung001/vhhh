@@ -77,9 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const effectiveFlightTime = getEffectiveFlightTime(flight);
                     
                     if (lowerStatus.includes('landed') || lowerStatus.includes('arrived') || lowerStatus.includes('at gate')) {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 1 * 60 * 1000);
+                        return effectiveFlightTime.getTime() >= (now.getTime() - 5 * 60 * 1000);
                     } else {
-                        return effectiveFlightTime.getTime() >= (now.getTime() - 1 * 60 * 1000);
+                        return effectiveFlightTime.getTime() >= (now.getTime() - 10 * 60 * 1000);
                     }
                 })
                 .sort((flightA, flightB) => {
@@ -168,5 +168,5 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(() => {
         console.log("Auto-refreshing all flight data...");
         fetchAllFlights();
-    }, 60000);
+    }, 30000);
 });
