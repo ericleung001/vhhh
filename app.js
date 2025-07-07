@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             processedFlights.sort((a, b) => a.effectiveDateTime.getTime() - b.effectiveDateTime.getTime());
             
-            const timeWindow = 7 * 60 * 1000; // 你可以修改這裡的時間窗口 (單位：毫秒)
+            const timeWindow = 4 * 60 * 1000; // 你可以修改這裡的時間窗口 (單位：毫秒)
             const lowerBound = now.getTime() - timeWindow;
             
             const displayFlights = processedFlights.filter(flight => {
